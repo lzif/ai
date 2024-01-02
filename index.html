@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Anjay</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/tokyo-night-dark.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/highlightjs-copy/dist/highlightjs-copy.min.css"
+    />
+    <link rel="stylesheet" href="/tailwind.css" />
+  </head>
+  <body class="bg-surface-950 text-surface-50">
+    <div class="flex flex-col items-center p-2 w-full">
+      <ul
+        id="content"
+        class="bg-surface-900 text-surface-50 rounded overflow-y-scroll w-full"
+      ></ul>
+      <div class="flex gap-2 w-full fixed bottom-0 p-2">
+        <textarea
+          id="prompt"
+          placeholder="Type your message here"
+          class="bg-surface-800 rounded-lg flex-1 active:border-0 border-0 p-1"
+        ></textarea>
+        <button
+          type="button"
+          id="submitButton"
+          onclick="fetchData()"
+          class="bg-primary-500 rounded py-2 px-3 max-h-12"
+        >
+          Send
+        </button>
+      </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+    <script src="https://unpkg.com/highlightjs-copy/dist/highlightjs-copy.min.js"></script>
+
+    <script>
+      hljs.addPlugin(new CopyButtonPlugin());
+
+      function createMessageElement(role, content) {
+        const uniqueId = `message-${Date.now()}-${Math.floor(
+          Math.random() * 1000,
+        )}`;
+
+        const li = document.createElement("li");
+        li.innerHTML = `<p class="not-prose">${role} : </p>`;
+        li.className = `${role} prose prose-invert lg:prose-xl bg-surface-800 rounded m-2 p-2`;
+
+        const div = document.createElement("div");
+        div.textContent = content;
+        li.appendChild(div);
+        div.id = uniqueId;
+        return { li, uniqueId };
+      }
+
+      const messages = [];
+      async function fetchData() {
+        let chatContainer = document.getElementById("content");
+        const prompt = document.getElementById("prompt").value;
+        const submitButton = document.getElementById("submitButton");
+        let { li } = createMessageElement("user", prompt);
+        document.getElementById("prompt").value = "";
+        chatContainer.appendChild(li);
+        submitButton.disabled = true;
+
+        const data = [];
+        messages.push({ role: "user", content: prompt });
+
+        fetch("http://localhost:9999/ai", {
+          body: JSON.stringify(messages),
+          headers: {
+            "Content-Type": "application/json",
+          },
+          method: "POST",
+        })
+          .then((response) => response.body)
+          .then((body) => {
+            const { li, uniqueId } = createMessageElement(
+              "assistant",
+              "Mengetik ...",
+            );
+            chatContainer.appendChild(li);
+            const reader = body.getReader();
+
+            function readStream() {
+              return reader.read().then(({ value, done }) => {
+                if (done) {
+                  const aiMessage = data.join("");
+                  messages.push({ role: "assistant", content: aiMessage });
+                  document.getElementById(uniqueId).innerHTML =
+                    marked.parse(aiMessage);
+                  hljs.highlightAll();
+                  chatContainer.scrollTop = chatContainer.scrollHeight;
+                  console.log(JSON.stringify(messages));
+                  submitButton.disabled = false;
+                  return;
+                }
+
+                const text = new TextDecoder().decode(value);
+                data.push(text);
+                message = data.join("") + " ... ";
+                document.getElementById(uniqueId).innerHTML =
+                  marked.parse(message);
+                hljs.highlightAll();
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+                return readStream();
+              });
+            }
+
+            return readStream();
+          })
+          .catch((error) => console.error("Error:", error));
+      }
+
+      const tx = document.getElementsByTagName("textarea");
+      for (let i = 0; i < tx.length; i++) {
+        tx[i].setAttribute(
+          "style",
+          "height:" + tx[i].scrollHeight + "px;overflow-y:hidden;",
+        );
+        tx[i].addEventListener("input", OnInput, false);
+      }
+
+      function OnInput() {
+        this.style.height = 0;
+        if (this.scrollHeight < 46) {
+          this.style.height = 46 + "px";
+        } else {
+          this.style.height = this.scrollHeight + "px";
+        }
+      }
+    </script>
+
+    <script
+      src="https://unpkg.com/htmx.org@1.9.10"
+      integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC"
+      crossorigin="anonymous"
+    ></script>
+    <script src="//cdn.jsdelivr.net/npm/eruda"></script>
+    <script>
+      eruda.init();
+    </script>
+  </body>
+</html>
